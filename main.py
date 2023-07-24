@@ -8,7 +8,10 @@ from instagrapi.exceptions import (
     LoginRequired,
     PrivateAccount,
     TwoFactorRequired)
+from instagrapi.types import UserShort
 from getpass import getpass
+import json
+import os
 
 
 def login() -> tuple[bool, str]:
@@ -51,14 +54,62 @@ def login() -> tuple[bool, str]:
 def menu() -> str:
     print("1. See who doesn't follow you back")
     print("2. See who you don't follow back")
-    print("3. Exit")
+    print("3. Save current followers to file")
+    print("4. Show diff between current followers and saved followers")
+    print("5. Exit")
 
     while True:
         choice = input("> ")
-        if choice in ["1", "2", "3"]:
+        if choice in ["1", "2", "3", "4", "5"]:
             return choice
         else:
             print("Invalid choice")
+
+
+def save_to_json(data: list[UserShort], filename: str) -> None:
+    save_dict = {}
+    for user in data:
+        save_dict[user.pk] = user.username
+    with open(filename, "w", encoding='utf-8') as f:
+        json.dump(save_dict, f, indent=4)
+
+
+def load_from_json(filename: str) -> dict:
+    # check if file exists, if not, create it
+    if os.path.isfile(filename) is False:
+        with open(filename, "w", encoding='utf-8') as f:
+            json.dump({}, f)
+
+    with open(filename, "r", encoding='utf-8') as f:
+        data = json.load(f)
+    return data
+
+
+def show_diff(old_dict: dict, new_list: list[UserShort]) -> None:
+    new_followers = []
+    lost_followers = []
+    changed_followers = []
+
+    new_dict = {user.pk: user.username for user in new_list}
+
+    for _id, _username in old_dict.items():
+        if _id not in new_dict.keys():
+            lost_followers.append(_username)
+        elif _username != new_dict[_id]:
+            changed_followers.append((_username, new_dict[_id]))
+
+    for _id, _username in new_dict.items():
+        if _id not in old_dict.keys():
+            new_followers.append(_username)
+
+    for _username in new_followers:
+        print(f" + {_username}")
+
+    for _username in lost_followers:
+        print(f" - {_username}")
+
+    for _old_username, _new_username in changed_followers:
+        print(f" * {_old_username} -> {_new_username}")
 
 
 cl = Client()
@@ -70,14 +121,12 @@ while True:
 print("Login success!\nPlease wait...\n")
 
 followers_dict = cl.user_followers(cl.user_id_from_username(username))
-followers_ids = followers_dict.keys()
-followers = followers_dict.values()
-followers = [user.username for user in followers]
+followers_us = list(followers_dict.values())
+followers = [user.username for user in followers_us]
 
 following_dict = cl.user_following(cl.user_id_from_username(username))
-following_ids = following_dict.keys()
-following = following_dict.values()
-following = [user.username for user in following]
+following_us = list(following_dict.values())
+following = [user.username for user in following_us]
 
 while True:
     print()
@@ -97,5 +146,14 @@ while True:
         print("\nUsers that you don't follow back:\n")
         for user in not_following:
             print(user)
+    elif option == "3":
+        # save current followers to file
+        save_to_json(followers_us, "followers.json")
+        print("\nCurrent followers saved to file")
+    elif option == "4":
+        # show diff between current followers and saved followers
+        saved_followers_dict = load_from_json("followers.json")
+        show_diff(saved_followers_dict, followers_us)
+
     else:
         exit(0)
